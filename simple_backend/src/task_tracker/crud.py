@@ -1,30 +1,33 @@
-from typing import List, Optional
-from schemas import Task, TaskCreate
+from schemas import TaskCreate, Task
+from cloudflare_llm_client import CloudflareLLMClient
+import os
+import cloud_task_storage
 
-tasks: List[Task] = []
-next_id = 1
+API_KEY = os.getenv("CLOUDFLARE_API_KEY")
+LLM_ENDPOINT = os.getenv("CLOUDFLARE_LLM_ENDPOINT")
+JSONBIN_BIN_ID = os.getenv("JSONBIN_BIN_ID")
+JSONBIN_API_KEY = os.getenv("JSONBIN_API_KEY")
 
-def get_tasks() -> List[Task]:
-    return tasks
+llm_client = CloudflareLLMClient(api_key=API_KEY, endpoint=LLM_ENDPOINT)
+
+storage = cloud_task_storage.CloudTaskStorage(bin_id=JSONBIN_BIN_ID, api_key=JSONBIN_API_KEY)
+
+def get_tasks() -> list[Task]:
+    return storage.get_tasks()
 
 def create_task(task_data: TaskCreate) -> Task:
-    global next_id
-    task = Task(id=next_id, title=task_data.title, status=task_data.status)
-    next_id += 1
-    tasks.append(task)
-    return task
+    try:
+        advice = llm_client.get_solution_advice(task_data.title)
+        full_text = f"{task_data.title}\n\nСоветы по решению:\n{advice}"
+    except Exception as e:
+        print(f"Ошибка при вызове LLM: {e}")
+        full_text = task_data.title
 
-def update_task(task_id: int, task_data: TaskCreate) -> Optional[Task]:
-    for idx, task in enumerate(tasks):
-        if task.id == task_id:
-            updated_task = Task(id=task_id, title=task_data.title, status=task_data.status)
-            tasks[idx] = updated_task
-            return updated_task
-    return None
+    new_task_data = TaskCreate(title=full_text, status=task_data.status)
+    return storage.create_task(new_task_data)
+
+def update_task(task_id: int, task_data: TaskCreate) -> Task | None:
+    return storage.update_task(task_id, task_data)
 
 def delete_task(task_id: int) -> bool:
-    for idx, task in enumerate(tasks):
-        if task.id == task_id:
-            del tasks[idx]
-            return True
-    return False
+    return storage.delete_task(task_id)
