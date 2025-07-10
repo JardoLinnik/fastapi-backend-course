@@ -1,36 +1,25 @@
-import requests
 from typing import List, Optional
 from schemas import Task, TaskCreate
+from base_http_client import BaseHTTPClient
 
-class CloudTaskStorage:
+class CloudTaskStorage(BaseHTTPClient):
     def __init__(self, bin_id: str, api_key: str):
+        base_url = f"https://api.jsonbin.io/v3/b/{bin_id}"
+        super().__init__(api_key, base_url)
         self.bin_id = bin_id
-        self.api_key = api_key
-        self.base_url = f"https://api.jsonbin.io/v3/b/{self.bin_id}"
-        self.headers = {
-            "X-Master-Key": self.api_key,
-            "Content-Type": "application/json"
-        }
 
     def _load_tasks(self) -> List[Task]:
-        try:
-            response = requests.get(self.base_url + "/latest", headers=self.headers)
-            response.raise_for_status()
-            data = response.json()
-            tasks_data = data.get('record', [])
-            return [Task(**item) for item in tasks_data]
-        except requests.RequestException as e:
-            print(f"Ошибка при загрузке задач: {e}")
+        data = self._request("GET", self.base_url + "/latest")
+        if data is None:
             return []
+        tasks_data = data.get('record', [])
+        return [Task(**item) for item in tasks_data]
 
     def _save_tasks(self, tasks: List[Task]):
         tasks_dict = [task.dict() for task in tasks]
-        try:
-            response = requests.put(self.base_url, headers=self.headers, json=tasks_dict)
-            response.raise_for_status()
-        except requests.RequestException as e:
-            print(f"Ошибка при сохранении задач: {e}")
-            raise
+        response = self._request("PUT", self.base_url, json=tasks_dict)
+        if response is None:
+            raise Exception("Ошибка при сохранении задач")
 
     def get_tasks(self) -> List[Task]:
         return self._load_tasks()
